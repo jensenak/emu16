@@ -8,22 +8,22 @@ import (
 
 // These constants are our instructions
 const (
-	LOAD  = iota // dest, op1, offset  : R[dest] = M[R[op1] + offset]
-	STORE        // src, op1, offset   : M[R[op1] + offset] = R[src]
-	SETL         // dest, const        : R[dest] = const
-	SETH         // dest, const
-	SBUS         // dest, op1, op2     : R[dest] = R[op1] < R[op2]
-	RBUS         // dest, op1, op2     : R[dest] = R[op1] == R[op2]
-	LJUMP        // op1, const         : R[0] = R[0] + (R[op1] == const ? 2 : 1)
-	EJUMP        // op1, const         : R[0] = R[0] + (R[op1] != const ? 2 : 1)
-	ADD          // dest, op1, op2     : R[dest] = R[op1] + R[op2]
-	SUB          // dest, op1, op2     : R[dest] = R[op1] - R[op2]
-	SHL          // dest, op1, op2     : R[dest] = R[op1] << R[op2]
-	SHR          // dest, op1, op2     : R[dest] = R[op1] >> R[op2]
-	AND          // dest, op1, op2     : R[dest] = R[op1] & R[op2]
-	OR           // dest, op1, op2     : R[dest] = R[op1] | R[op2]
-	NOT          // dest, op1          : R[dest] = ~R[op1]
-	XOR          // dest, op1, op2     : R[dest] = R[op1] ^ R[op2]
+	LOAD = iota
+	STORE
+	SETL
+	SETH
+	SBUS
+	RBUS
+	LJUMP
+	EJUMP
+	ADD
+	SUB
+	SHL
+	SHR
+	AND
+	OR
+	NOT
+	XOR
 )
 
 // Interrupt is used to force the processor to run an alternate code segment
@@ -140,6 +140,7 @@ func (p *Processor) Boot() error {
 
 // Run does what you'd expect
 func (p *Processor) Run() error {
+Mainloop:
 	for {
 		err := p.execute()
 		if err != nil {
@@ -149,8 +150,11 @@ func (p *Processor) Run() error {
 		case <-p.Ticker:
 		case i := <-p.Ints:
 			p.Register[15].Put16(i.Handler)
+			break Mainloop
 		}
+		p.Register[15].Put16(p.Register[15].Get16() + 1)
 	}
+	return nil
 }
 
 func (p *Processor) execute() error {
