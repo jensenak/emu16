@@ -99,7 +99,7 @@ type Bootmedia interface {
 type Bus interface {
 	Send(busaddr, data uint8) error
 	Recv(busaddr uint8) (uint8, error)
-	Interrupts(<-chan Interrupt)
+	Interrupts(chan<- Interrupt)
 }
 
 // NewProcessor - Basically just filling the struct for you.
@@ -140,7 +140,6 @@ func (p *Processor) Boot() error {
 
 // Run does what you'd expect
 func (p *Processor) Run() error {
-Mainloop:
 	for {
 		err := p.execute()
 		if err != nil {
@@ -148,13 +147,14 @@ Mainloop:
 		}
 		select {
 		case <-p.Ticker:
-		case i := <-p.Ints:
+		case i, ok := <-p.Ints:
+			if !ok {
+				return nil
+			}
 			p.Register[15].Put16(i.Handler)
-			break Mainloop
 		}
-		p.Register[15].Put16(p.Register[15].Get16() + 1)
+		p.Register[15].Put16(p.Register[15].Get16() + 2)
 	}
-	return nil
 }
 
 func (p *Processor) execute() error {
