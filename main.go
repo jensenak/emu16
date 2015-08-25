@@ -26,7 +26,7 @@ func (m *Mem) newBanks(length uint16) {
 // Load8 return a byte
 func (m *Mem) Load8(addr, offset uint16) (uint8, error) {
 	if addr+offset > m.bankSize {
-		return 0, errors.New("Segfault!")
+		return 0, fmt.Errorf("Segfault (accessing 8 %x + offset %x)", addr, offset)
 	}
 	return m.bank[addr+offset], nil
 }
@@ -34,7 +34,7 @@ func (m *Mem) Load8(addr, offset uint16) (uint8, error) {
 // Load16 returns 2 bytes
 func (m *Mem) Load16(addr, offset uint16) (uint16, error) {
 	if addr+offset+1 > m.bankSize {
-		return 0, errors.New("Segfault!")
+		return 0, fmt.Errorf("Segfault (accessing 16 %x + offset %x)", addr, offset)
 	}
 	return uint16(m.bank[addr+offset])<<8 | uint16(m.bank[addr+offset+1]), nil
 }
@@ -42,7 +42,7 @@ func (m *Mem) Load16(addr, offset uint16) (uint16, error) {
 // Save8 stores a byte
 func (m *Mem) Save8(addr, offset uint16, data uint8) error {
 	if addr+offset > m.bankSize {
-		return errors.New("Segfault!")
+		return fmt.Errorf("Segfault (saving 8 %x + offset %x)", addr, offset)
 	}
 	m.bank[addr+offset] = data
 	return nil
@@ -51,7 +51,7 @@ func (m *Mem) Save8(addr, offset uint16, data uint8) error {
 // Save16 stores 2 bytes
 func (m *Mem) Save16(addr, offset, data uint16) error {
 	if addr+offset+1 > m.bankSize {
-		return errors.New("Segfault!")
+		return fmt.Errorf("Segfault (saving 16 %x + offset %x)", addr, offset)
 	}
 	m.bank[addr+offset] = uint8(data >> 8)
 	m.bank[addr+offset+1] = uint8(data & 0xFF)
@@ -64,8 +64,9 @@ func (m *Mem) Save16(addr, offset, data uint16) error {
 
 // Bus is for communication
 type Bus struct {
-	c  chan<- emu.Interrupt
-	ch []channels
+	c    chan<- emu.Interrupt
+	ch   []channels
+	wait []uint8
 }
 
 type channels struct {
@@ -73,12 +74,12 @@ type channels struct {
 	in  chan uint8 // data -> cpu
 }
 
-func (b *Bus) newBus(buffer int) uint8 {
+func (b *Bus) newBus(buffer int) int {
 	in := make(chan uint8, buffer)
 	out := make(chan uint8, buffer)
 	chans := channels{out, in}
 	b.ch = append(b.ch, chans)
-	return uint8(len(b.ch))
+	return len(b.ch) - 1
 }
 
 // Send is to put data on a bus
@@ -96,6 +97,14 @@ func (b *Bus) Recv(addr uint8) (uint8, error) {
 		return 0, errors.New("Invalid bus address")
 	}
 	return <-b.ch[addr].in, nil
+}
+
+// Which returns the address of the first bus with waiting data
+func (b *Bus) Which() (uint8, error) {
+	if len(b.wait) > 0 {
+		return b.wait[0], nil
+	}
+	return 0, errors.New("No data")
 }
 
 // Interrupts receives an interrupt chan from cpu
@@ -153,34 +162,85 @@ func (b *Bootmedia) Load(addr uint16) (uint8, error) {
 
 func main() {
 	fmt.Printf("Initializing resources...")
+
 	tick := time.NewTicker(time.Millisecond * 200).C
+
 	m := Mem{}
 	m.newBanks(16384) // Init with 16K of ram
 
 	bm := Bootmedia{}
-	data := []uint8{}
-	e := bm.init(data, 0, 0)
+
+	// For the following program, registers are used as follows
+	// 15 - Instruction pointer (reserved)
+	// 0 - value
+	// 1 - multiplier
+	// 2 - result
+	// 5 - bus driver
+	// 10 - zero
+	// 11 - one
+	// 12 - jump addr
+	data := []uint8{
+		0x0a, 0x0f, //0 Just some vars (10 & 15)
+		// Silently leaving reg 10 at 0
+		0x2b, 0x01, //2 Set reg 11 to 1
+		0x00, 0x00, //4 load var into 1
+		0x01, 0x10, //6 load second var into 2
+		0x2c, 0x00, 0x11, //8 Set the jump location
+		0x60, 0x1c, //b compare: if 0 < 1 jump
+		0x01, 0x00, //d Swap vars (so smallest is in 0)
+		0x00, 0x01, //f
+		0x82, 0x31, //11 Add 2 to what's in 3
+		0x90, 0x0b, //13 Sub 11 (one) from 0
+		0x6a, 0x0c, //15 if 1 is still larger than 10 jump back
+		0x25, 0x00, 0x02, //17 Prep bus driver to deliver result to tty
+		0x45,             //1a Send the result over bus
+		0x25, 0x01, 0x00, //1b Prep bus driver to kill process
+		0x45, //1e And quit
+	}
+	// Data from above, load into beginning of memory (0), and start instruction pointer at 0x02
+	e := bm.init(data, 0, 2)
 	if e != nil {
 		panic(e)
 	}
 
 	bu := Bus{}
-	tty := bu.newBus(0)
-	done := bu.newBus(0)
+	tty := bu.newBus(2)
+	done := bu.newBus(2)
 
 	fmt.Printf("done\nCreating new processor...")
 	proc := emu.NewProcessor(&m, &bm, &bu, tick)
 	fmt.Printf("done\nBooting...")
 	proc.Boot()
-	fmt.Printf("done\nRunning processor.")
-	go proc.Run()
+	fmt.Printf("done\nRunning processor")
+
+	errorChan := make(chan error)
+	go proc.Run(errorChan)
+
+	tick2 := time.NewTicker(time.Millisecond * 100).C
+Mainloop:
 	for {
+		//terminal(0, 10, &m)
 		select {
+		case e := <-errorChan:
+			fmt.Printf("\n-- Error: %s --\n", e)
+			for i := 0; i < 40; i++ {
+				fmt.Printf("0x%x 0x%x \n", i, m.bank[i])
+			}
+			break Mainloop
 		case output := <-bu.ch[tty].out:
 			fmt.Printf("%d", output)
 		case <-bu.ch[done].out:
-			fmt.Println("DONE")
+			fmt.Println("\nDone")
 			close(bu.c)
+			break Mainloop
+		case <-tick2:
 		}
+	}
+}
+
+func terminal(start, end int, m *Mem) {
+	for i := start; i <= end; i++ {
+		fmt.Printf("\033[%d;%dH", 5, i*8)
+		fmt.Printf("%x:%x", i, m.bank[i])
 	}
 }

@@ -10,8 +10,8 @@ import (
 const (
 	LOAD = iota
 	STORE
-	SETL
-	SETH
+	SET
+	WBUS
 	SBUS
 	RBUS
 	LJUMP
@@ -24,6 +24,11 @@ const (
 	OR
 	NOT
 	XOR
+)
+
+// Instruction pointer is reg 15
+const (
+	IP = 15
 )
 
 // Interrupt is used to force the processor to run an alternate code segment
@@ -99,6 +104,7 @@ type Bootmedia interface {
 type Bus interface {
 	Send(busaddr, data uint8) error
 	Recv(busaddr uint8) (uint8, error)
+	Which() (uint8, error)
 	Interrupts(chan<- Interrupt)
 }
 
@@ -134,39 +140,42 @@ func (p *Processor) Boot() error {
 	if err != nil {
 		return fmt.Errorf("Could not set initial Instruction Pointer: " + err.Error())
 	}
-	p.Register[15].Put16(ip)
+	p.Register[IP].Put16(ip)
 	return nil
 }
 
 // Run does what you'd expect
-func (p *Processor) Run() error {
+func (p *Processor) Run(errorChan chan error) {
 	for {
+		// fmt.Printf("\nIP: %x\n0:%x\n1:%x", p.Register[IP].Get16(), p.Register[0].Get16(), p.Register[1].Get16())
 		err := p.execute()
 		if err != nil {
-			return err
+			for i := 0; i < 16; i++ {
+				fmt.Printf("REG%d %x\n", i, p.Register[i].Get16())
+			}
+			errorChan <- err
 		}
 		select {
 		case <-p.Ticker:
-		case i, ok := <-p.Ints:
-			if !ok {
-				return nil
-			}
-			p.Register[15].Put16(i.Handler)
+		case <-p.Ints:
+			return
 		}
-		p.Register[15].Put16(p.Register[15].Get16() + 2)
 	}
 }
 
-func (p *Processor) execute() error {
+func (p *Processor) execute() (err error) {
 	var data uint16
-	inst, err := p.Memory.Load16(p.Register[15].Get16(), 0)
+	var width uint16
+	inst, err := p.Memory.Load16(p.Register[IP].Get16(), 0)
 	if err != nil {
-		return err
+		return
 	}
 	opcode := uint8(inst >> 12)
 	arg1 := uint8(inst & 0xF00 >> 8)
 	arg2 := uint8(inst & 0xF0 >> 4)
 	arg3 := uint8(inst & 0xF)
+	width = 2 // Default to 2 since most instructions will be that size.
+	//fmt.Printf("\n\n\n\nopcode %x | args %x %x %x", opcode, arg1, arg2, arg3)
 	switch opcode {
 	case LOAD:
 		if arg3 > 0 {
@@ -181,21 +190,33 @@ func (p *Processor) execute() error {
 		} else {
 			err = p.Memory.Save16(p.Register[arg2].Get16(), 0, p.Register[arg1].Get16())
 		}
-	case SETL:
-		p.Register[arg1].Low = arg2<<4 | arg3
-	case SETH:
-		p.Register[arg1].High = arg2<<4 | arg3
+	case SET:
+		data, err = p.Memory.Load16(p.Register[IP].Get16(), 1)
+		p.Register[arg1].Put16(data)
+		width = 3
+	case WBUS:
+		var e error
+		p.Register[p.Register[arg1].Low].Low, e = p.Bus.Which()
+		if e != nil {
+			// Error returned when no data waiting
+			// Set low to 0 and high to 1 ("overflow")
+			p.Register[p.Register[arg1].Low].Low = uint8(0x0)
+			p.Register[p.Register[arg1].Low].High = uint8(0x01)
+		}
+		width = 1
 	case SBUS:
-		err = p.Bus.Send(arg2, arg1)
+		err = p.Bus.Send(p.Register[arg1].High, p.Register[arg1].Low)
+		width = 1
 	case RBUS:
-		p.Register[arg1].Low, err = p.Bus.Recv(arg2)
+		p.Register[p.Register[arg1].Low].Low, err = p.Bus.Recv(p.Register[arg1].High)
+		width = 1
 	case LJUMP:
 		if p.Register[arg1].Get16() < p.Register[arg2].Get16() {
-			p.Register[15] = p.Register[arg3]
+			p.Register[IP] = p.Register[arg3]
 		}
 	case EJUMP:
 		if p.Register[arg1].Get16() == p.Register[arg2].Get16() {
-			p.Register[15] = p.Register[arg3]
+			p.Register[IP] = p.Register[arg3]
 		}
 	case ADD:
 		data = p.Register[arg2].Get16() + p.Register[arg3].Get16()
@@ -221,12 +242,11 @@ func (p *Processor) execute() error {
 	case XOR:
 		data = p.Register[arg2].Get16() ^ p.Register[arg3].Get16()
 		p.Register[arg1].Put16(data)
-	default:
-		return nil
 	}
 	// Since each case performs one op, we can catch all errors here.
+	p.Register[IP].Put16(p.Register[IP].Get16() + width) // Step two instructions
 	if err != nil {
-		return err
+		return fmt.Errorf("%s | %x %x", err.Error(), opcode, p.Register[IP].Get16())
 	}
-	return nil
+	return
 }

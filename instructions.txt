@@ -1,0 +1,24 @@
+// EMU16 Instruction set
+
+//0 load(dest, addr, size)
+//1 store(src, addr, size)
+//2 setl(dest, consth, constl**)
+//3 wbus(spec*)
+//4 sbus(spec*)
+//5 rbus(spec*)
+//6 ljump(src, cmp, addr)
+//7 ejump(src, cmp, addr)
+//8 add(dest, val, diff)
+//9 sub(dest, val, diff)
+//a shl(dest, val, len)
+//b shr(dest, val, len)
+//c and(dest, val, mask)
+//d or(dest, val, mask)
+//e not(dest, val)
+//f xor(dest, val, mask)
+
+// * because busses are 8 bit, one reg should be used 
+// with reg high representing bus address 
+// and reg low representing reg address (for data)
+
+// ** set is a 3 byte instruction where each const is a byte
