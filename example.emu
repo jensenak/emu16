@@ -1,0 +1,18 @@
+00, 00, # Program starts with offset 0
+00, 02, # Program instruction pointer begins @ 2
+0f, 0a, # Just some vars (`10` & `15`)
+# Silently leaving reg a at 0
+2b, 00, 01, # Set reg b to `1`
+00, a1, # load var into 0
+01, b1, # load second var into 1
+2c, 00, 12, #8 Set the jump location
+60, 1c, # compare: if 0 < 1 jump
+01, a1, # Swap vars (so smallest is in 0)
+00, b1, #
+82, 21, # Add value to our result, store in result
+90, 0b, # Sub 11 (one) from 0
+25, 00, 02, # Prep bus driver to deliver result to tty
+45,       # Send the result over bus
+6a, 0c, # if 1 is still larger than 10 jump back
+25, 01, 0b, # Prep bus driver to kill process
+45, # And quit

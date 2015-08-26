@@ -2,7 +2,7 @@
 
 //0 load(dest, addr, size)
 //1 store(src, addr, size)
-//2 setl(dest, consth, constl**)
+//2 set(dest, consth, constl**)
 //3 wbus(spec*)
 //4 sbus(spec*)
 //5 rbus(spec*)

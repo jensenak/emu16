@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/jensenak/emu16/emu"
@@ -156,11 +159,63 @@ func (b *Bootmedia) Load(addr uint16) (uint8, error) {
 	return b.data[addr], nil
 }
 
+//==================================================\\
+// LOAD FILES
+//==================================================\\
+func parseFile() (data []uint8, offset uint16, pointer uint16, err error) {
+	if len(os.Args) < 2 {
+		err = errors.New("Program name required")
+		return
+	}
+
+	raw, err := ioutil.ReadFile(os.Args[1])
+	if err != nil {
+		return
+	}
+	holder := ""
+ParseLoop:
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == 10 || raw[i] == 32 || raw[i] == 44 {
+			// Hit a delimiter, see if we have data to add
+			if holder != "" {
+				b, e := hex.DecodeString(holder)
+				if e != nil {
+					panic(e)
+				}
+				data = append(data, uint8(b[0]))
+				holder = ""
+			}
+			continue ParseLoop // Skip newlines, spaces, and commas
+		}
+		if raw[i] == 35 {
+			// Found a "#" which begins a comment.
+			// Increase i until we hit newline or end of input
+			for {
+				i++
+				if raw[i] == 10 || i == len(raw)-1 {
+					continue ParseLoop
+				}
+			}
+		}
+		holder += string(raw[i])
+	}
+	if len(data) < 5 {
+		err = errors.New("Not enough data to run a program")
+	}
+	offset = uint16(data[0])<<8 | uint16(data[1])
+	pointer = uint16(data[2])<<8 | uint16(data[3])
+	data = data[4:]
+
+	return
+}
+
 //===============================
 // MAIN BODY
 //===============================
 
 func main() {
+	fmt.Print("\033[2J")
+	fmt.Print("\033[1;1H")
 	fmt.Printf("Initializing resources...")
 
 	tick := time.NewTicker(time.Millisecond * 200).C
@@ -179,16 +234,16 @@ func main() {
 	// 10 - zero
 	// 11 - one
 	// 12 - jump addr
-	data := []uint8{
-		0x0a, 0x0f, // Just some vars (`10` & `15`)
+	/*data := []uint8{
+		0x0f, 0x0a, // Just some vars (`10` & `15`)
 		// Silently leaving reg a at 0
 		0x2b, 0x00, 0x01, // Set reg b to `1`
 		0x00, 0xa1, // load var into 0
 		0x01, 0xb1, // load second var into 1
 		0x2c, 0x00, 0x12, //8 Set the jump location
 		0x60, 0x1c, // compare: if 0 < 1 jump
-		0x01, 0xa0, // Swap vars (so smallest is in 0)
-		0x00, 0xb0, //
+		0x01, 0xa1, // Swap vars (so smallest is in 0)
+		0x00, 0xb1, //
 		0x82, 0x21, // Add value to our result, store in result
 		0x90, 0x0b, // Sub 11 (one) from 0
 		0x25, 0x00, 0x02, // Prep bus driver to deliver result to tty
@@ -196,11 +251,15 @@ func main() {
 		0x6a, 0x0c, // if 1 is still larger than 10 jump back
 		0x25, 0x01, 0x0b, // Prep bus driver to kill process
 		0x45, // And quit
+	}*/
+	data, offset, pointer, err := parseFile()
+	if err != nil {
+		panic(err)
 	}
 	// Data from above, load into beginning of memory (0), and start instruction pointer at 0x02
-	e := bm.init(data, 0, 2)
-	if e != nil {
-		panic(e)
+	err = bm.init(data, offset, pointer)
+	if err != nil {
+		panic(err)
 	}
 
 	bu := Bus{}

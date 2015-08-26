@@ -152,7 +152,7 @@ func (p *Processor) Run(errorChan chan error) {
 		fmt.Printf("========== \n")
 		err := p.execute()
 		for i := 0; i < 16; i++ {
-			fmt.Printf("REG%d %x      \n", i, p.Register[i].Get16())
+			fmt.Printf("0x%x 0x%x      \n", i, p.Register[i].Get16())
 		}
 		if err != nil {
 			errorChan <- err
