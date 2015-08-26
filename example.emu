@@ -14,5 +14,5 @@
 25, 00, 02, # Prep bus driver to deliver result to tty
 45,       # Send the result over bus
 6a, 0c, # if 1 is still larger than 10 jump back
-25, 01, 0b, # Prep bus driver to kill process
+25, 02, 0b, # Prep bus driver to kill process
 45, # And quit

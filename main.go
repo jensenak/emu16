@@ -263,8 +263,9 @@ func main() {
 	}
 
 	bu := Bus{}
-	tty := bu.newBus(2)
-	done := bu.newBus(2)
+	raw := bu.newBus(0)
+	tty := bu.newBus(0)
+	done := bu.newBus(0)
 
 	fmt.Printf("done\nCreating new processor...")
 	proc := emu.NewProcessor(&m, &bm, &bu, tick)
@@ -278,28 +279,25 @@ func main() {
 	tick2 := time.NewTicker(time.Millisecond * 100).C
 Mainloop:
 	for {
-		//terminal(0, 10, &m)
 		select {
 		case e := <-errorChan:
 			fmt.Printf("\n-- Error: %s --\n", e)
-			for i := 0; i < 40; i++ {
-				fmt.Printf("0x%x 0x%x \n", i, m.bank[i])
-			}
 			break Mainloop
-		case output := <-bu.ch[tty].out:
+		case output := <-bu.ch[raw].out:
 			fmt.Printf("%d ", output)
+		case output := <-bu.ch[tty].out:
+			h := byte(output >> 8)
+			l := byte(output & 0xff)
+			if h == 0 {
+				fmt.Printf("%c", l)
+			} else {
+				fmt.Printf("%c%c", h, l)
+			}
 		case <-bu.ch[done].out:
 			fmt.Println("\nDone")
 			close(bu.c)
 			break Mainloop
 		case <-tick2:
 		}
-	}
-}
-
-func terminal(start, end int, m *Mem) {
-	for i := start; i <= end; i++ {
-		fmt.Printf("\033[%d;%dH", 5, i*8)
-		fmt.Printf("%x:%x", i, m.bank[i])
 	}
 }

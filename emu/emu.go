@@ -148,12 +148,12 @@ func (p *Processor) Boot() error {
 func (p *Processor) Run(errorChan chan error) {
 	for {
 		// fmt.Printf("\nIP: %x\n0:%x\n1:%x", p.Register[IP].Get16(), p.Register[0].Get16(), p.Register[1].Get16())
-		fmt.Printf("\033[5;1H")
-		fmt.Printf("========== \n")
+		/*fmt.Printf("\033[5;1H")
+		fmt.Printf("========== \n")*/
 		err := p.execute()
-		for i := 0; i < 16; i++ {
+		/*for i := 0; i < 16; i++ {
 			fmt.Printf("0x%x 0x%x      \n", i, p.Register[i].Get16())
-		}
+		}*/
 		if err != nil {
 			errorChan <- err
 		}
@@ -172,7 +172,7 @@ func (p *Processor) execute() (err error) {
 	if err != nil {
 		return
 	}
-	fmt.Printf("0x%x  \n", inst)
+	// fmt.Printf("0x%x  \n", inst)
 	opcode := uint8(inst >> 12)
 	arg1 := uint8(inst & 0xF00 >> 8)
 	arg2 := uint8(inst & 0xF0 >> 4)
