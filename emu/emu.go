@@ -102,8 +102,8 @@ type Bootmedia interface {
 // busses 0 - 5 planned for normal use
 // bus 15 reserved for signalling
 type Bus interface {
-	Send(busaddr, data uint8) error
-	Recv(busaddr uint8) (uint8, error)
+	Send(busaddr uint8, data uint16) error
+	Recv(busaddr uint8) (uint16, error)
 	Which() (uint8, error)
 	Interrupts(chan<- Interrupt)
 }
@@ -148,11 +148,13 @@ func (p *Processor) Boot() error {
 func (p *Processor) Run(errorChan chan error) {
 	for {
 		// fmt.Printf("\nIP: %x\n0:%x\n1:%x", p.Register[IP].Get16(), p.Register[0].Get16(), p.Register[1].Get16())
+		fmt.Printf("\033[5;1H")
+		fmt.Printf("========== \n")
 		err := p.execute()
+		for i := 0; i < 16; i++ {
+			fmt.Printf("REG%d %x      \n", i, p.Register[i].Get16())
+		}
 		if err != nil {
-			for i := 0; i < 16; i++ {
-				fmt.Printf("REG%d %x\n", i, p.Register[i].Get16())
-			}
 			errorChan <- err
 		}
 		select {
@@ -170,6 +172,7 @@ func (p *Processor) execute() (err error) {
 	if err != nil {
 		return
 	}
+	fmt.Printf("0x%x  \n", inst)
 	opcode := uint8(inst >> 12)
 	arg1 := uint8(inst & 0xF00 >> 8)
 	arg2 := uint8(inst & 0xF0 >> 4)
@@ -179,14 +182,14 @@ func (p *Processor) execute() (err error) {
 	switch opcode {
 	case LOAD:
 		if arg3 > 0 {
-			p.Register[arg1].Low, err = p.Memory.Load8(p.Register[arg2].Get16(), p.Register[arg3].Get16())
+			p.Register[arg1].Low, err = p.Memory.Load8(p.Register[arg2].Get16(), 0)
 		} else {
 			data, err = p.Memory.Load16(p.Register[arg2].Get16(), 0)
 			p.Register[arg1].Put16(data)
 		}
 	case STORE:
 		if arg3 > 0 {
-			err = p.Memory.Save8(p.Register[arg2].Get16(), p.Register[arg3].Get16(), p.Register[arg1].Low)
+			err = p.Memory.Save8(p.Register[arg2].Get16(), 0, p.Register[arg1].Low)
 		} else {
 			err = p.Memory.Save16(p.Register[arg2].Get16(), 0, p.Register[arg1].Get16())
 		}
@@ -205,18 +208,21 @@ func (p *Processor) execute() (err error) {
 		}
 		width = 1
 	case SBUS:
-		err = p.Bus.Send(p.Register[arg1].High, p.Register[arg1].Low)
+		err = p.Bus.Send(p.Register[arg1].High, p.Register[p.Register[arg1].Low].Get16())
 		width = 1
 	case RBUS:
-		p.Register[p.Register[arg1].Low].Low, err = p.Bus.Recv(p.Register[arg1].High)
+		data, err = p.Bus.Recv(p.Register[arg1].High)
+		p.Register[p.Register[arg1].Low].Put16(data)
 		width = 1
 	case LJUMP:
 		if p.Register[arg1].Get16() < p.Register[arg2].Get16() {
 			p.Register[IP] = p.Register[arg3]
+			width = 0
 		}
 	case EJUMP:
 		if p.Register[arg1].Get16() == p.Register[arg2].Get16() {
 			p.Register[IP] = p.Register[arg3]
+			width = 0
 		}
 	case ADD:
 		data = p.Register[arg2].Get16() + p.Register[arg3].Get16()

@@ -70,20 +70,20 @@ type Bus struct {
 }
 
 type channels struct {
-	out chan uint8 // output <- cpu
-	in  chan uint8 // data -> cpu
+	out chan uint16 // output <- cpu
+	in  chan uint16 // data -> cpu
 }
 
 func (b *Bus) newBus(buffer int) int {
-	in := make(chan uint8, buffer)
-	out := make(chan uint8, buffer)
+	in := make(chan uint16, buffer)
+	out := make(chan uint16, buffer)
 	chans := channels{out, in}
 	b.ch = append(b.ch, chans)
 	return len(b.ch) - 1
 }
 
 // Send is to put data on a bus
-func (b *Bus) Send(addr, data uint8) error {
+func (b *Bus) Send(addr uint8, data uint16) error {
 	if uint8(len(b.ch)) < addr {
 		return errors.New("Invalid bus address")
 	}
@@ -92,7 +92,7 @@ func (b *Bus) Send(addr, data uint8) error {
 }
 
 // Recv gets data off a bus
-func (b *Bus) Recv(addr uint8) (uint8, error) {
+func (b *Bus) Recv(addr uint8) (uint16, error) {
 	if uint8(len(b.ch)) < addr {
 		return 0, errors.New("Invalid bus address")
 	}
@@ -180,22 +180,22 @@ func main() {
 	// 11 - one
 	// 12 - jump addr
 	data := []uint8{
-		0x0a, 0x0f, //0 Just some vars (10 & 15)
-		// Silently leaving reg 10 at 0
-		0x2b, 0x01, //2 Set reg 11 to 1
-		0x00, 0x00, //4 load var into 1
-		0x01, 0x10, //6 load second var into 2
-		0x2c, 0x00, 0x11, //8 Set the jump location
-		0x60, 0x1c, //b compare: if 0 < 1 jump
-		0x01, 0x00, //d Swap vars (so smallest is in 0)
-		0x00, 0x01, //f
-		0x82, 0x31, //11 Add 2 to what's in 3
-		0x90, 0x0b, //13 Sub 11 (one) from 0
-		0x6a, 0x0c, //15 if 1 is still larger than 10 jump back
-		0x25, 0x00, 0x02, //17 Prep bus driver to deliver result to tty
-		0x45,             //1a Send the result over bus
-		0x25, 0x01, 0x00, //1b Prep bus driver to kill process
-		0x45, //1e And quit
+		0x0a, 0x0f, // Just some vars (`10` & `15`)
+		// Silently leaving reg a at 0
+		0x2b, 0x00, 0x01, // Set reg b to `1`
+		0x00, 0xa1, // load var into 0
+		0x01, 0xb1, // load second var into 1
+		0x2c, 0x00, 0x12, //8 Set the jump location
+		0x60, 0x1c, // compare: if 0 < 1 jump
+		0x01, 0xa0, // Swap vars (so smallest is in 0)
+		0x00, 0xb0, //
+		0x82, 0x21, // Add value to our result, store in result
+		0x90, 0x0b, // Sub 11 (one) from 0
+		0x25, 0x00, 0x02, // Prep bus driver to deliver result to tty
+		0x45,       // Send the result over bus
+		0x6a, 0x0c, // if 1 is still larger than 10 jump back
+		0x25, 0x01, 0x0b, // Prep bus driver to kill process
+		0x45, // And quit
 	}
 	// Data from above, load into beginning of memory (0), and start instruction pointer at 0x02
 	e := bm.init(data, 0, 2)
@@ -211,7 +211,7 @@ func main() {
 	proc := emu.NewProcessor(&m, &bm, &bu, tick)
 	fmt.Printf("done\nBooting...")
 	proc.Boot()
-	fmt.Printf("done\nRunning processor")
+	fmt.Printf("done\nRunning processor\n\n")
 
 	errorChan := make(chan error)
 	go proc.Run(errorChan)
@@ -228,7 +228,7 @@ Mainloop:
 			}
 			break Mainloop
 		case output := <-bu.ch[tty].out:
-			fmt.Printf("%d", output)
+			fmt.Printf("%d ", output)
 		case <-bu.ch[done].out:
 			fmt.Println("\nDone")
 			close(bu.c)
