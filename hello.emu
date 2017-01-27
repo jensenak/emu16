@@ -1,13 +1,13 @@
-00 00 #offset 0
-00 0e #point 14
-48 65 6c 6c 6f 2c 20 57 6f 72 6c 64 00 21 #Hello, World! <-13 bytes 
-2a 00 0d #Put `13` in reg a
-2b 00 02 #Put `1` in reg b
-2e 00 1a #Jump reg e set to next inst
-21 01 02 #Bus driver to tty from reg 2
-02 00    #Load next bytes
-41       #Send data to bus
-80 0b    #Add 2 to counter in 0
-60 ae    #If addr < counter jump back
-21 02 0b #Bus driver to exit
-41
+00, 00, #offset 0
+00, 0e, #point 14
+48, 65, 6c, 6c 6f 2c 20 57 6f 72 6c 64 00 21 #Hello, World! <-13 bytes 
+2a, 00, 0d, #Put `13` in reg a
+2b, 00, 02, #Put `1` in reg b
+2e, 00, 1a, #Jump reg e set to next inst
+21, 01, 02, #Bus driver to tty from reg 2
+02, 00,    #Load next bytes
+41,       #Send data to bus
+80, 0b,    #Add 2 to counter in 0
+60, ae,    #If addr < counter jump back
+21, 02, 0b, #Bus driver to exit
+41,
